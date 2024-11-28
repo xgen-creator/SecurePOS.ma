@@ -1,0 +1,35 @@
+graph TD
+    subgraph Client
+        A[Application Mobile]
+        B[Interface Web]
+        C[Sonnette Connectée]
+    end
+
+    subgraph Backend
+        D[API Gateway]
+        E[Service Authentication]
+        F[Service Notification]
+        G[Service Communication]
+        H[Service Storage]
+        I[Service Analytics]
+    end
+
+    subgraph Database
+        J[(Base principale)]
+        K[(Cache Redis)]
+        L[(Storage Media)]
+    end
+
+    A --> D
+    B --> D
+    C --> D
+    D --> E
+    D --> F
+    D --> G
+    D --> H
+    D --> I
+    E --> J
+    F --> K
+    G --> L
+    H --> L
+    I --> J
