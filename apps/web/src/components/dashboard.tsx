@@ -54,6 +54,14 @@ export function Dashboard({ user }: DashboardProps) {
           >
             Visiteurs
           </button>
+          {user.role === 'ADMIN' && (
+            <a
+              href="/admin"
+              className="px-4 py-2 rounded-lg font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors"
+            >
+              Admin
+            </a>
+          )}
         </div>
       </div>
 
