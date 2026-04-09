@@ -1,0 +1,255 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // Project: ScanBell_2026 (nrmfqjrwewyvvnkxwxww)
+  // Region: eu-west-1 (Ireland)
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  name          String
+  role          UserRole  @default(OWNER)
+  phone         String?
+  avatar        String?
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret  String? @encrypted
+  backupCodes      String[] @encrypted
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  properties    Property[]
+  sessions      Session[]
+  auditLogs     AuditLog[]
+  
+  @@map("users")
+}
+
+model Property {
+  id          String   @id @default(uuid())
+  name        String
+  address     String
+  timezone    String   @default("Europe/Paris")
+  settings    Json     @default("{}")
+  
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  devices     Device[]
+  visitors    Visitor[]
+  accessLogs  AccessLog[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("properties")
+}
+
+model Device {
+  id            String       @id @default(uuid())
+  type          DeviceType
+  name          String
+  status        DeviceStatus @default(OFFLINE)
+  serialNumber  String       @unique
+  firmware      String?
+  lastSeen      DateTime?
+  settings      Json         @default("{}")
+  
+  propertyId    String
+  property      Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  
+  accessLogs    AccessLog[]
+  recordings    Recording[]
+  
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  
+  @@map("devices")
+}
+
+model Visitor {
+  id              String      @id @default(uuid())
+  name            String
+  email           String?
+  phone           String?
+  
+  // Données biométriques (chiffrées au repos)
+  faceDescriptor  String      @encrypted  // Vecteur facial encodé
+  faceImageUrl    String?                 // URL Supabase Storage
+  
+  accessLevel     AccessLevel @default(GUEST)
+  validFrom       DateTime    @default(now())
+  validUntil      DateTime?
+  isActive        Boolean     @default(true)
+  metadata        Json        @default("{}")
+  
+  propertyId      String
+  property        Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  
+  accessLogs      AccessLog[]
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  @@index([propertyId, isActive])
+  @@index([faceDescriptor])  // Pour recherche rapide
+  @@map("visitors")
+}
+
+model AccessLog {
+  id            String    @id @default(uuid())
+  action        AccessAction
+  status        AccessStatus
+  confidence    Float?    // Score de reconnaissance faciale
+  method        AuthMethod
+  
+  // Relations
+  visitorId     String?
+  visitor       Visitor?  @relation(fields: [visitorId], references: [id])
+  
+  deviceId      String
+  device        Device    @relation(fields: [deviceId], references: [id])
+  
+  propertyId    String
+  property      Property  @relation(fields: [propertyId], references: [id])
+  
+  // Contexte
+  ipAddress     String?
+  userAgent     String?
+  geoLocation   Json?     // { lat, lng, city, country }
+  
+  createdAt     DateTime  @default(now())
+  
+  @@index([propertyId, createdAt])
+  @@index([visitorId, createdAt])
+  @@map("access_logs")
+}
+
+model Session {
+  id            String    @id @default(uuid())
+  token         String    @unique
+  refreshToken  String    @unique
+  expiresAt     DateTime
+  
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  deviceInfo    Json      // { deviceId, browser, os, ip }
+  isValid       Boolean   @default(true)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([userId, isValid])
+  @@map("sessions")
+}
+
+model Recording {
+  id            String    @id @default(uuid())
+  type          RecordingType
+  url           String    // Supabase Storage URL
+  thumbnailUrl  String?
+  duration      Int?      // secondes
+  
+  deviceId      String
+  device        Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  
+  metadata      Json      @default("{}")
+  
+  createdAt     DateTime  @default(now())
+  
+  @@index([deviceId, createdAt])
+  @@map("recordings")
+}
+
+model AuditLog {
+  id            String    @id @default(uuid())
+  eventType     String
+  severity      Severity  @default(INFO)
+  details       Json
+  
+  userId        String?
+  user          User?     @relation(fields: [userId], references: [id])
+  
+  ipAddress     String?
+  userAgent     String?
+  
+  createdAt     DateTime  @default(now())
+  
+  @@index([eventType, createdAt])
+  @@map("audit_logs")
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  OWNER
+  MANAGER
+  VIEWER
+}
+
+enum DeviceType {
+  DOORBELL
+  CAMERA
+  LOCK
+  SENSOR
+  HUB
+}
+
+enum DeviceStatus {
+  ONLINE
+  OFFLINE
+  ERROR
+  UPDATING
+}
+
+enum AccessLevel {
+  GUEST
+  CONTRACTOR
+  EMPLOYEE
+  FAMILY
+  ADMIN
+}
+
+enum AccessAction {
+  ENTRY
+  EXIT
+  DENIED
+  DELIVERY
+  VISITOR
+}
+
+enum AccessStatus {
+  SUCCESS
+  FAILURE
+  PENDING
+  TIMEOUT
+}
+
+enum AuthMethod {
+  FACIAL_RECOGNITION
+  QR_CODE
+  NFC
+  PIN
+  MANUAL
+  REMOTE
+}
+
+enum RecordingType {
+  VIDEO
+  AUDIO
+  SNAPSHOT
+  EVENT
+}
+
+enum Severity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}

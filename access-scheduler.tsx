@@ -5,17 +5,17 @@ const AccessScheduler = () => {
   const [schedules] = useState([
     {
       id: 1,
-      visitorName: "Service de Ménage",
+      visitorName: "Cleaning Service",
       type: "recurring",
-      schedule: "Tous les Lundis",
+      schedule: "Every Monday",
       timeWindow: "14:00 - 16:00",
       status: "active"
     },
     {
       id: 2,
-      visitorName: "Livraison Hebdomadaire",
+      visitorName: "Weekly Delivery",
       type: "recurring",
-      schedule: "Mercredi",
+      schedule: "Wednesday",
       timeWindow: "10:00 - 12:00",
       status: "active"
     }
@@ -24,16 +24,16 @@ const AccessScheduler = () => {
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Planification des Accès</h1>
+        <h1 className="text-2xl font-bold">Access Scheduling</h1>
         <button className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
-          Nouveau Planning
+          New Schedule
         </button>
       </div>
 
-      {/* Calendrier hebdomadaire */}
+      {/* Weekly Calendar */}
       <div className="bg-white p-6 rounded-lg shadow mb-6">
         <div className="grid grid-cols-7 gap-4">
-          {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map(day => (
+          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
             <div key={day} className="text-center">
               <div className="font-medium mb-2">{day}</div>
               <div className="h-24 border rounded-lg p-2 overflow-y-auto">
@@ -50,10 +50,10 @@ const AccessScheduler = () => {
         </div>
       </div>
 
-      {/* Liste des planifications */}
+      {/* List of Schedules */}
       <div className="bg-white rounded-lg shadow">
         <div className="p-4 border-b">
-          <h2 className="font-semibold">Planifications Actives</h2>
+          <h2 className="font-semibold">Active Schedules</h2>
         </div>
         <div className="divide-y">
           {schedules.map(schedule => (

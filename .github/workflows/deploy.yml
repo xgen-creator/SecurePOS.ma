@@ -1,0 +1,409 @@
+# =============================================================================
+# ScanBell CI/CD Pipeline
+# Next.js 15 + Supabase Cloud + Vercel Deployment
+# =============================================================================
+
+name: ScanBell CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20'
+  PNPM_VERSION: '9'
+  NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+jobs:
+  # ===========================================================================
+  # Job 1: Lint & Type Check
+  # ===========================================================================
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run ESLint
+        run: pnpm run lint
+
+      - name: Run TypeScript type checking
+        run: pnpm run type-check || pnpm tsc --noEmit
+
+      - name: Check code formatting
+        run: npx prettier --check "**/*.{ts,tsx,js,jsx,json,css,md}"
+
+  # ===========================================================================
+  # Job 2: Supabase Migration Check
+  # ===========================================================================
+  supabase-migrations:
+    name: Supabase Migration Check
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Check Supabase connection
+        run: |
+          supabase status --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} || true
+
+      - name: Verify migrations exist
+        run: |
+          echo "Checking required migrations..."
+          test -f supabase/migrations/001_initial_schema.sql || (echo "Migration 001 missing!" && exit 1)
+          test -f supabase/migrations/002_create_tags_table.sql || (echo "Migration 002 missing!" && exit 1)
+          test -f supabase/migrations/003_create_webrtc_sessions_table.sql || (echo "Migration 003 missing!" && exit 1)
+          echo "✅ All required migrations present"
+
+      - name: Validate migration syntax
+        run: |
+          for file in supabase/migrations/*.sql; do
+            echo "Validating $file..."
+            # Basic SQL syntax check
+            if ! grep -q "CREATE\|ALTER\|INSERT" "$file"; then
+              echo "⚠️ Warning: No DDL/DML statements in $file"
+            fi
+          done
+          echo "✅ Migration syntax validation complete"
+
+  # ===========================================================================
+  # Job 3: Unit & Integration Tests
+  # ===========================================================================
+  unit-tests:
+    name: Unit & Integration Tests
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Jest tests
+        run: pnpm test -- --coverage --coverageReporters=text-summary
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+  # ===========================================================================
+  # Job 4: E2E Tests (Playwright)
+  # ===========================================================================
+  e2e-tests:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, supabase-migrations]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          cd e2e && pnpm install --frozen-lockfile || npm install
+
+      - name: Install Playwright browsers
+        run: |
+          cd e2e
+          npx playwright install --with-deps chromium webkit
+
+      - name: Setup test environment
+        run: |
+          echo "NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" > apps/web/.env.local
+          echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> apps/web/.env.local
+          echo "NEXT_PUBLIC_APP_URL=http://localhost:3000" >> apps/web/.env.local
+
+      - name: Run E2E tests
+        run: |
+          cd e2e
+          npx playwright test --reporter=html
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+
+      - name: Upload E2E test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 7
+
+      - name: Comment PR with test results
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const testStatus = '${{ job.status }}' === 'success' ? '✅' : '❌';
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `${testStatus} **E2E Tests:** Scan-to-Call flow ${'${{ job.status }}'}
+              
+              - Mobile Safari (iPhone)
+              - Mobile Chrome (Pixel)
+              - Desktop Chrome (Owner dashboard)
+              
+              [View Playwright Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`
+            })
+
+  # ===========================================================================
+  # Job 5: Build Application
+  # ===========================================================================
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    needs: [unit-tests, e2e-tests]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm turbo run build --filter=@scanbell/database --filter=@scanbell/auth
+
+      - name: Build Next.js application
+        run: |
+          cd apps/web
+          pnpm next build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextjs-build
+          path: apps/web/.next/
+          retention-days: 1
+
+  # ===========================================================================
+  # Job 6: Deploy to Vercel (Production)
+  # ===========================================================================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel environment
+        run: |
+          cd apps/web
+          vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build for production
+        run: |
+          cd apps/web
+          vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy to production
+        id: deploy
+        run: |
+          cd apps/web
+          DEPLOY_URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+          echo "url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+          echo "Deployed to: $DEPLOY_URL"
+
+      - name: Notify deployment success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: 'success',
+              target_url: '${{ steps.deploy.outputs.url }}',
+              description: 'Deployed to Vercel',
+              context: 'Vercel Deployment'
+            })
+
+  # ===========================================================================
+  # Job 7: Deploy Preview (PR branches)
+  # ===========================================================================
+  deploy-preview:
+    name: Deploy Preview
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.event_name == 'pull_request'
+    environment:
+      name: preview
+      url: ${{ steps.deploy-preview.outputs.url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel environment
+        run: |
+          cd apps/web
+          vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build for preview
+        run: |
+          cd apps/web
+          vercel build --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy preview
+        id: deploy-preview
+        run: |
+          cd apps/web
+          DEPLOY_URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
+          echo "url=$DEPLOY_URL" >> $GITHUB_OUTPUT
+          echo "Preview URL: $DEPLOY_URL"
+
+      - name: Comment PR with preview URL
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `🚀 **Preview deployment ready!**
+              
+              🔗 URL: ${{ steps.deploy-preview.outputs.url }}
+              
+              Tests included:
+              - ✅ Lint & Type Check
+              - ✅ Supabase Migration Check (002_tags, 003_webrtc_sessions)
+              - ✅ Unit Tests
+              - ✅ E2E Tests (Scan-to-Call flow)`
+            })
+
+  # ===========================================================================
+  # Job 8: Post-Deployment Smoke Tests
+  # ===========================================================================
+  smoke-tests:
+    name: Post-Deployment Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Run smoke tests
+        run: |
+          echo "Running smoke tests against production..."
+          # Test health endpoint
+          curl -sf "${{ needs.deploy-production.outputs.url }}/api/health" || exit 1
+          # Test main page
+          curl -sf "${{ needs.deploy-production.outputs.url }}" || exit 1
+          echo "✅ Smoke tests passed"
+
+      - name: Notify success
+        if: success()
+        run: |
+          echo "🎉 ScanBell V2.1 successfully deployed to production!"

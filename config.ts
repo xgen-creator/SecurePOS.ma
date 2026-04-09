@@ -35,7 +35,7 @@ interface WebRTCConfig {
 
 export const config = {
     aws: {
-        region: process.env.AWS_REGION || 'eu-west-3',
+        region: process.env.AWS_REGION || 'us-east-1',
         credentials: {
             accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
             secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || ''
@@ -85,8 +85,8 @@ export const config = {
         host: process.env.HOST || 'localhost'
     },
     security: {
-        jwtSecret: process.env.JWT_SECRET || 'your-secret-key',
-        tokenExpiration: '24h',
+        // Authentification gérée exclusivement par Supabase Auth
+        // Pas de JWT custom - utilisation de @supabase/ssr
         bcryptSaltRounds: 10
     },
     facial: {

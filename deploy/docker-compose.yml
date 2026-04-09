@@ -1,0 +1,87 @@
+version: '3.8'
+
+# ScanBell 2026 - Docker Compose Minimal
+# Backend géré par Supabase Cloud (PostgreSQL + Auth + Storage)
+# Ce fichier ne contient que les services edge nécessaires
+
+services:
+  # Frontend Application - Next.js 15 + Supabase
+  frontend:
+    build:
+      context: ../apps/web
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+    networks:
+      - scanbell-network
+    restart: unless-stopped
+
+  # Redis Cache - Optionnel mais recommandé pour les sessions et cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - scanbell-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+    networks:
+      - scanbell-network
+    restart: unless-stopped
+
+  # Monitoring - Prometheus (optionnel)
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus_data:/prometheus
+    networks:
+      - scanbell-network
+    restart: unless-stopped
+    profiles: ["monitoring"]
+
+  # Monitoring - Grafana (optionnel)
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+    depends_on:
+      - prometheus
+    networks:
+      - scanbell-network
+    restart: unless-stopped
+    profiles: ["monitoring"]
+
+volumes:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  scanbell-network:
+    driver: bridge

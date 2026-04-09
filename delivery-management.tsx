@@ -9,7 +9,7 @@ const DeliveryManagement = () => {
       id: 1,
       courier: 'Amazon',
       trackingNumber: 'AM2023456789',
-      status: 'En route',
+      status: 'In Transit',
       eta: '14:30',
       accessCode: 'ABC123',
     },
@@ -17,7 +17,7 @@ const DeliveryManagement = () => {
       id: 2,
       courier: 'FedEx',
       trackingNumber: 'FX789012345',
-      status: 'Planifié',
+      status: 'Scheduled',
       eta: '16:45',
       accessCode: 'XYZ789',
     }
@@ -28,7 +28,7 @@ const DeliveryManagement = () => {
       id: 3,
       courier: 'UPS',
       trackingNumber: 'UP123456789',
-      status: 'Livré',
+      status: 'Delivered',
       deliveredAt: '2024-11-25 15:30',
       proof: 'photo_123.jpg'
     }
@@ -38,9 +38,9 @@ const DeliveryManagement = () => {
     <div className="p-6">
       <Tabs defaultValue="active">
         <TabsList>
-          <TabsTrigger value="active">Livraisons en cours</TabsTrigger>
-          <TabsTrigger value="history">Historique</TabsTrigger>
-          <TabsTrigger value="settings">Paramètres</TabsTrigger>
+          <TabsTrigger value="active">Active Deliveries</TabsTrigger>
+          <TabsTrigger value="history">History</TabsTrigger>
+          <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
         <TabsContent value="active">
@@ -50,47 +50,34 @@ const DeliveryManagement = () => {
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-4">
-                      <div className="p-3 bg-blue-100 rounded-lg">
-                        <Package className="w-6 h-6 text-blue-600" />
+                      <div className="p-3 bg-blue-50 rounded-lg">
+                        <Package className="w-6 h-6 text-blue-500" />
                       </div>
                       <div>
-                        <h3 className="font-medium text-lg">{delivery.courier}</h3>
+                        <h3 className="font-medium">{delivery.courier}</h3>
                         <p className="text-sm text-gray-500">#{delivery.trackingNumber}</p>
                       </div>
                     </div>
-
-                    <div className="text-right">
-                      <span className="inline-block px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm">
-                        {delivery.status}
-                      </span>
-                      <div className="mt-2 text-sm text-gray-500">
-                        ETA: {delivery.eta}
-                      </div>
-                    </div>
+                    <span className={`px-3 py-1 rounded-full text-sm ${
+                      delivery.status === 'In Transit' 
+                        ? 'bg-blue-50 text-blue-600'
+                        : 'bg-yellow-50 text-yellow-600'
+                    }`}>
+                      {delivery.status}
+                    </span>
                   </div>
 
-                  <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                    <h4 className="font-medium mb-2">Code d'accès temporaire</h4>
-                    <div className="flex items-center justify-between">
-                      <code className="bg-white px-4 py-2 rounded border">
+                  <div className="mt-6 grid grid-cols-2 gap-4">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-gray-400" />
+                      <span className="text-sm text-gray-600">ETA: {delivery.eta}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Access Code:</span>
+                      <code className="px-2 py-1 bg-gray-100 rounded text-sm">
                         {delivery.accessCode}
                       </code>
-                      <div className="text-sm text-gray-500">
-                        Valide pour cette livraison uniquement
-                      </div>
                     </div>
-                  </div>
-
-                  <div className="mt-4 flex gap-2">
-                    <button className="px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                      Détails
-                    </button>
-                    <button className="px-4 py-2 text-sm text-green-600 hover:bg-green-50 rounded-lg transition-colors">
-                      Autoriser l'accès
-                    </button>
-                    <button className="px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                      Refuser l'accès
-                    </button>
                   </div>
                 </CardContent>
               </Card>
@@ -99,26 +86,73 @@ const DeliveryManagement = () => {
         </TabsContent>
 
         <TabsContent value="history">
-          <div className="grid gap-4">
+          <div className="grid gap-6">
             {deliveryHistory.map(delivery => (
               <Card key={delivery.id}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-600" />
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 bg-green-50 rounded-lg">
+                        <CheckCircle className="w-6 h-6 text-green-500" />
+                      </div>
                       <div>
                         <h3 className="font-medium">{delivery.courier}</h3>
                         <p className="text-sm text-gray-500">#{delivery.trackingNumber}</p>
                       </div>
                     </div>
-                    <div className="text-sm text-gray-500">
-                      {delivery.deliveredAt}
+                    <span className="px-3 py-1 bg-green-50 text-green-600 rounded-full text-sm">
+                      {delivery.status}
+                    </span>
+                  </div>
+
+                  <div className="mt-6 grid grid-cols-2 gap-4">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-gray-400" />
+                      <span className="text-sm text-gray-600">
+                        Delivered: {delivery.deliveredAt}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-600">
+                        Proof of Delivery: {delivery.proof}
+                      </span>
                     </div>
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
+        </TabsContent>
+
+        <TabsContent value="settings">
+          <Card>
+            <CardHeader>
+              <CardTitle>Delivery Settings</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium">Automatic Access Codes</h3>
+                    <p className="text-sm text-gray-500">
+                      Generate unique access codes for each delivery
+                    </p>
+                  </div>
+                  <input type="checkbox" className="toggle" defaultChecked />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium">Delivery Notifications</h3>
+                    <p className="text-sm text-gray-500">
+                      Receive updates about your deliveries
+                    </p>
+                  </div>
+                  <input type="checkbox" className="toggle" defaultChecked />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

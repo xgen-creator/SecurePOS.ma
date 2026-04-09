@@ -8,36 +8,36 @@ const CommunicationSystem = () => {
     {
       id: 1,
       sender: 'visitor',
-      content: "Bonjour, je suis le livreur Amazon.",
+      content: "Hello, I'm the Amazon delivery driver.",
       timestamp: new Date(),
       type: 'text'
     },
     {
       id: 2,
       sender: 'owner',
-      content: "Bonjour, je vous ouvre dans un instant.",
+      content: "Hello, I'll open the door in a moment.",
       timestamp: new Date(),
       type: 'text'
     }
   ]);
 
   const [quickResponses] = useState([
-    "Je vous ouvre tout de suite",
-    "Merci de patienter un moment",
-    "Veuillez laisser le colis devant la porte",
-    "Je ne suis pas disponible actuellement"
+    "I'll open the door right away",
+    "Please wait a moment",
+    "Please leave the package at the door",
+    "I'm not available at the moment"
   ]);
 
   return (
     <div className="h-screen flex">
-      {/* Liste des conversations */}
+      {/* Conversation List */}
       <div className="w-80 border-r bg-white">
         <div className="p-4 border-b">
           <h2 className="font-semibold">Conversations</h2>
         </div>
         
         <div className="overflow-y-auto">
-          {['Livreur Amazon', 'Visiteur', 'Service postal'].map((name, index) => (
+          {['Amazon Delivery', 'Visitor', 'Postal Service'].map((name, index) => (
             <div 
               key={index}
               className={`p-4 border-b hover:bg-gray-50 cursor-pointer ${
@@ -51,7 +51,7 @@ const CommunicationSystem = () => {
                 </div>
                 <div>
                   <h3 className="font-medium">{name}</h3>
-                  <p className="text-sm text-gray-500">Dernier message...</p>
+                  <p className="text-sm text-gray-500">Last message...</p>
                 </div>
               </div>
             </div>
@@ -59,15 +59,15 @@ const CommunicationSystem = () => {
         </div>
       </div>
 
-      {/* Zone de chat principale */}
+      {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
-        {/* En-tête du chat */}
+        {/* Chat Header */}
         <div className="p-4 border-b bg-white">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <h2 className="font-semibold">Livreur Amazon</h2>
+              <h2 className="font-semibold">Amazon Delivery</h2>
               <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
-                En ligne
+                Online
               </span>
             </div>
             <div className="flex gap-2">
@@ -106,7 +106,7 @@ const CommunicationSystem = () => {
           ))}
         </div>
 
-        {/* Réponses rapides */}
+        {/* Quick Responses */}
         <div className="p-2 bg-white border-t">
           <div className="flex gap-2 overflow-x-auto pb-2">
             {quickResponses.map((response, index) => (
@@ -120,7 +120,7 @@ const CommunicationSystem = () => {
           </div>
         </div>
 
-        {/* Zone de saisie */}
+        {/* Input Area */}
         <div className="p-4 bg-white border-t">
           <div className="flex items-center gap-2">
             <button className="p-2 hover:bg-gray-100 rounded-full">
@@ -131,7 +131,7 @@ const CommunicationSystem = () => {
             </button>
             <input
               type="text"
-              placeholder="Écrivez votre message..."
+              placeholder="Type your message..."
               className="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <button className="p-2 bg-blue-500 text-white rounded-full hover:bg-blue-600">

@@ -3,6 +3,7 @@ import * as tf from '@tensorflow/tfjs';
 import * as faceapi from 'face-api.js';
 import { v4 as uuidv4 } from 'uuid';
 import { Storage } from '../storage/Storage';
+import { EncryptionService } from '../encryption';
 
 export interface FaceProfile {
   id: string;
@@ -10,6 +11,21 @@ export interface FaceProfile {
   descriptors: Float32Array[];
   thumbnail?: string;
   lastSeen?: Date;
+  scenes?: string[];
+  customActions?: {
+    onPresence?: string[];
+    onAbsence?: string[];
+  };
+}
+
+// Interface pour le stockage chiffré (RGPD compliant)
+interface EncryptedFaceProfile {
+  id: string;
+  name: string;
+  // Descripteurs chiffrés - stockés comme string JSON encryptée
+  encryptedDescriptors: string;
+  thumbnail?: string;
+  lastSeen?: string;
   scenes?: string[];
   customActions?: {
     onPresence?: string[];
@@ -249,7 +265,33 @@ class FaceRecognitionService extends EventEmitter {
     try {
       const savedProfiles = await Storage.get('faceProfiles');
       if (savedProfiles) {
-        this.profiles = new Map(Object.entries(savedProfiles));
+        const encryptedProfiles = Object.entries(savedProfiles) as [string, EncryptedFaceProfile][];
+        
+        // Déchiffrer les descripteurs pour chaque profil
+        for (const [id, encryptedProfile] of encryptedProfiles) {
+          try {
+            const decryptedDescriptorsJson = await EncryptionService.decryptField(
+              encryptedProfile.encryptedDescriptors
+            );
+            const descriptorsArray = JSON.parse(decryptedDescriptorsJson) as number[][];
+            const descriptors = descriptorsArray.map(arr => new Float32Array(arr));
+            
+            const profile: FaceProfile = {
+              id: encryptedProfile.id,
+              name: encryptedProfile.name,
+              descriptors,
+              thumbnail: encryptedProfile.thumbnail,
+              lastSeen: encryptedProfile.lastSeen ? new Date(encryptedProfile.lastSeen) : undefined,
+              scenes: encryptedProfile.scenes,
+              customActions: encryptedProfile.customActions
+            };
+            
+            this.profiles.set(id, profile);
+          } catch (decryptError) {
+            this.emit('error', `Failed to decrypt profile ${id}: ${decryptError}`);
+            // Continue with other profiles
+          }
+        }
       }
     } catch (error) {
       this.emit('error', 'Failed to load face profiles');
@@ -258,8 +300,37 @@ class FaceRecognitionService extends EventEmitter {
 
   private async saveProfiles(): Promise<void> {
     try {
-      const profilesObj = Object.fromEntries(this.profiles);
-      await Storage.set('faceProfiles', profilesObj);
+      const encryptedProfiles: Record<string, EncryptedFaceProfile> = {};
+      
+      // Chiffrer les descripteurs pour chaque profil avant sauvegarde
+      for (const [id, profile] of this.profiles.entries()) {
+        try {
+          // Convertir Float32Array[] en number[][] pour JSON serialization
+          const descriptorsArray = profile.descriptors.map(desc => Array.from(desc));
+          const descriptorsJson = JSON.stringify(descriptorsArray);
+          
+          // Chiffrer les descripteurs
+          const encryptedDescriptors = await EncryptionService.encryptField(descriptorsJson);
+          
+          const encryptedProfile: EncryptedFaceProfile = {
+            id: profile.id,
+            name: profile.name,
+            encryptedDescriptors,
+            thumbnail: profile.thumbnail,
+            lastSeen: profile.lastSeen?.toISOString(),
+            scenes: profile.scenes,
+            customActions: profile.customActions
+          };
+          
+          encryptedProfiles[id] = encryptedProfile;
+        } catch (encryptError) {
+          this.emit('error', `Failed to encrypt profile ${id}: ${encryptError}`);
+          // Skip this profile but continue with others
+          continue;
+        }
+      }
+      
+      await Storage.set('faceProfiles', encryptedProfiles);
     } catch (error) {
       this.emit('error', 'Failed to save face profiles');
     }

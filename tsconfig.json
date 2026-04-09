@@ -1,13 +1,14 @@
 {
   "compilerOptions": {
-    "target": "es2018",
-    "module": "commonjs",
-    "lib": ["es2018", "esnext.asynciterable", "dom"],
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "skipLibCheck": true,
     "sourceMap": true,
-    "outDir": "./dist",
-    "moduleResolution": "node",
-    "removeComments": true,
+    "declaration": true,
+    "declarationMap": true,
+    "strict": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
     "strictFunctionTypes": true,
@@ -21,8 +22,11 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "resolveJsonModule": true,
-    "baseUrl": "."
+    "baseUrl": ".",
+    "paths": {
+      "@scanbell/*": ["./packages/*/src"]
+    }
   },
-  "exclude": ["node_modules"],
-  "include": ["./sources/**/*.ts"]
+  "exclude": ["node_modules", "dist", ".next", "build"],
+  "include": ["packages/**/*", "apps/**/*"]
 }
