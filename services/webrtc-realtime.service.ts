@@ -5,6 +5,9 @@
 
 import { createClient, SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
 import { EventEmitter } from 'events';
+import { createLogger } from './utils/logger';
+
+const logger = createLogger('WebRTCRealtimeService');
 
 // Types for WebRTC signaling
 interface SignalMessage {
@@ -226,6 +229,8 @@ class WebRTCRealtimeService extends EventEmitter {
    * Cleanup service
    */
   async cleanup(): Promise<void> {
+    logger.info('Cleaning up WebRTCRealtimeService', { sessionsCount: this.sessions.size });
+    
     // End all active sessions
     for (const [sessionId, session] of this.sessions.entries()) {
       if (session.status === 'connected') {
@@ -239,6 +244,18 @@ class WebRTCRealtimeService extends EventEmitter {
     }
     this.channels.clear();
     this.sessions.clear();
+    
+    // Remove all event listeners
+    this.removeAllListeners();
+    
+    logger.info('WebRTCRealtimeService cleanup completed');
+  }
+
+  /**
+   * Alias for cleanup() - for consistent API across services
+   */
+  async destroy(): Promise<void> {
+    return this.cleanup();
   }
 
   /**

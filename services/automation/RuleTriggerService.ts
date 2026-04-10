@@ -1,6 +1,9 @@
 import { DeviceManager } from '../devices/DeviceManager';
 import { EventEmitter } from 'events';
+import { createLogger } from '../utils/logger';
 import type { Rule } from '../../components/automation/RuleBuilder';
+
+const logger = createLogger('RuleTriggerService');
 
 interface TriggerContext {
   timestamp: number;
@@ -132,7 +135,7 @@ export class RuleTriggerService {
       // Par défaut, toutes les conditions doivent être vraies (AND)
       return results.every(result => result);
     } catch (error) {
-      console.error(`Erreur lors de l'évaluation de la règle ${rule.id}:`, error);
+      logger.error(`Erreur lors de l'évaluation de la règle ${rule.id}:`, { ruleId: rule.id, error });
       return false;
     }
   }
@@ -188,11 +191,11 @@ export class RuleTriggerService {
         // Autres types de conditions à implémenter...
         
         default:
-          console.warn(`Type de condition non pris en charge: ${condition.type}`);
+          logger.warn(`Type de condition non pris en charge: ${condition.type}`, { conditionType: condition.type });
           return false;
       }
     } catch (error) {
-      console.error(`Erreur lors de l'évaluation de la condition:`, error);
+      logger.error(`Erreur lors de l'évaluation de la condition`, { error });
       return false;
     }
   }
@@ -203,7 +206,7 @@ export class RuleTriggerService {
         await this.executeAction(action);
       }
     } catch (error) {
-      console.error(`Erreur lors de l'exécution des actions de la règle ${rule.id}:`, error);
+      logger.error(`Erreur lors de l'exécution des actions de la règle`, { ruleId: rule.id, error });
     }
   }
 
@@ -229,10 +232,10 @@ export class RuleTriggerService {
         }
 
         default:
-          console.warn(`Type d'action non pris en charge: ${action.type}`);
+          logger.warn(`Type d'action non pris en charge`, { actionType: action.type });
       }
     } catch (error) {
-      console.error(`Erreur lors de l'exécution de l'action:`, error);
+      logger.error(`Erreur lors de l'exécution de l'action`, { error });
     }
   }
 
@@ -273,6 +276,33 @@ export class RuleTriggerService {
   private handleDeviceStateChange(deviceId: string, newState: any) {
     // Forcer une réévaluation immédiate des règles
     this.evaluateAllRules();
+  }
+
+  /**
+   * Cleanup method for memory management
+   * Stops intervals, removes listeners, clears buffers
+   */
+  public destroy(): void {
+    logger.info('Destroying RuleTriggerService', { rulesCount: this.rules.size });
+
+    // Stop evaluation interval
+    if (this.evaluationInterval) {
+      clearInterval(this.evaluationInterval);
+      this.evaluationInterval = null;
+    }
+
+    // Remove device state change listener
+    this.deviceManager.off('deviceStateChange', this.handleDeviceStateChange.bind(this));
+
+    // Clear all event emitter listeners
+    this.eventEmitter.removeAllListeners();
+
+    // Clear data structures
+    this.rules.clear();
+    this.lastEvaluations.clear();
+    this.triggerHistory.length = 0;
+
+    logger.info('RuleTriggerService destroyed successfully');
   }
 }
 

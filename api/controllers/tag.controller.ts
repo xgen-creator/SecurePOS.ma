@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { randomBytes } from 'crypto';
+import { createLogger } from '../../services/utils/logger';
+
+const logger = createLogger('TagController');
 
 // Types for tag operations
 interface TagFeatures {
@@ -135,7 +138,7 @@ export class TagController {
       });
       
     } catch (error) {
-      console.error('Error getting tag info:', error);
+      logger.error('Error getting tag info', { error: error instanceof Error ? error.message : 'Unknown error' });
       res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -223,7 +226,7 @@ export class TagController {
         .single();
       
       if (error) {
-        console.error('Error creating tag:', error);
+        logger.error('Error creating tag', { error: error.message });
         res.status(500).json({ error: 'Failed to create tag' });
         return;
       }
@@ -238,7 +241,7 @@ export class TagController {
       });
       
     } catch (error) {
-      console.error('Error creating tag:', error);
+      logger.error('Error creating tag', { error: error instanceof Error ? error.message : 'Unknown error' });
       res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -268,7 +271,7 @@ export class TagController {
         .order('created_at', { ascending: false });
       
       if (error) {
-        console.error('Error fetching tags:', error);
+        logger.error('Error fetching tags', { error: error.message });
         res.status(500).json({ error: 'Failed to fetch tags' });
         return;
       }
@@ -276,7 +279,7 @@ export class TagController {
       res.json(tags || []);
       
     } catch (error) {
-      console.error('Error fetching tags:', error);
+      logger.error('Error fetching tags', { error: error instanceof Error ? error.message : 'Unknown error' });
       res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -314,8 +317,7 @@ export class TagController {
       res.json(tag);
       
     } catch (error) {
-      console.error('Error fetching tag:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      logger.error('Error fetching tag', { error: error instanceof Error ? error.message : 'Unknown error' });
     }
   }
   
@@ -356,15 +358,14 @@ export class TagController {
         .single();
       
       if (error) {
-        console.error('Error updating tag:', error);
-        res.status(500).json({ error: 'Failed to update tag' });
+        logger.error('Error updating tag', { error: error.message });
         return;
       }
       
       res.json(tag);
       
     } catch (error) {
-      console.error('Error updating tag:', error);
+      logger.error('Error updating tag', { error: error instanceof Error ? error.message : 'Unknown error' });
       res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -390,7 +391,7 @@ export class TagController {
         .eq('id', id);
       
       if (error) {
-        console.error('Error deleting tag:', error);
+        logger.error('Error deleting tag', { error: error instanceof Error ? error.message : 'Unknown error' });
         res.status(500).json({ error: 'Failed to delete tag' });
         return;
       }
@@ -398,7 +399,7 @@ export class TagController {
       res.status(204).send();
       
     } catch (error) {
-      console.error('Error deleting tag:', error);
+      logger.error('Error deleting tag', { error: error instanceof Error ? error.message : 'Unknown error' });
       res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -453,7 +454,7 @@ export class TagController {
       });
       
     } catch (error) {
-      console.error('Error getting tag stats:', error);
+      logger.error('Error getting tag stats', { error: error instanceof Error ? error.message : 'Unknown error' });
       res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -478,7 +479,7 @@ export class TagController {
         .select('id, name, is_active, scan_count, last_scan_at, created_at');
       
       if (error) {
-        console.error('Error fetching tag stats:', error);
+        logger.error('Error fetching tag stats', { error: error.message });
         res.status(500).json({ error: 'Failed to fetch stats' });
         return;
       }
@@ -494,7 +495,7 @@ export class TagController {
       res.json(stats);
       
     } catch (error) {
-      console.error('Error getting all tag stats:', error);
+      logger.error('Error getting all tag stats', { error: error instanceof Error ? error.message : 'Unknown error' });
       res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -526,7 +527,7 @@ export class TagController {
         .single();
       
       if (error) {
-        console.error('Error updating tag settings:', error);
+        logger.error('Error updating tag settings', { error: error instanceof Error ? error.message : 'Unknown error' });
         res.status(500).json({ error: 'Failed to update settings' });
         return;
       }
@@ -534,7 +535,7 @@ export class TagController {
       res.json(tag);
       
     } catch (error) {
-      console.error('Error updating tag settings:', error);
+      logger.error('Error updating tag settings', { error: error instanceof Error ? error.message : 'Unknown error' });
       res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -566,7 +567,7 @@ export class TagController {
         .single();
       
       if (error) {
-        console.error('Error updating tag availability:', error);
+        logger.error('Error updating tag availability', { error: error instanceof Error ? error.message : 'Unknown error' });
         res.status(500).json({ error: 'Failed to update availability' });
         return;
       }
@@ -574,7 +575,7 @@ export class TagController {
       res.json(tag);
       
     } catch (error) {
-      console.error('Error updating tag availability:', error);
+      logger.error('Error updating tag availability', { error: error instanceof Error ? error.message : 'Unknown error' });
       res.status(500).json({ error: 'Internal server error' });
     }
   }
