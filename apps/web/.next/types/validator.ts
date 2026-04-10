@@ -137,6 +137,15 @@ type RouteHandlerConfig<Route extends AppRouteHandlerRoutes = AppRouteHandlerRou
   type __Unused = __Check
 }
 
+// Validate ../../src/app/settings/whatsapp/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/settings/whatsapp">> = Specific
+  const handler = {} as typeof import("../../src/app/settings/whatsapp/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../src/app/tags/page.tsx
 {
   type __IsExpected<Specific extends AppPageConfig<"/tags">> = Specific
