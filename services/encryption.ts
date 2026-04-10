@@ -1,5 +1,8 @@
 import { createCipheriv, createDecipheriv, randomBytes, scrypt } from 'crypto';
 import { promisify } from 'util';
+import { createLogger } from './utils/logger';
+
+const logger = createLogger('EncryptionService');
 
 export class EncryptionService {
   private static readonly ALGORITHM = 'aes-256-gcm';
@@ -35,7 +38,7 @@ export class EncryptionService {
         salt
       };
     } catch (error) {
-      console.error('Encryption failed:', error);
+      logger.error('Encryption failed', { error: error instanceof Error ? error.message : 'Unknown' });
       throw new Error('Encryption failed');
     }
   }
@@ -51,7 +54,7 @@ export class EncryptionService {
         decipher.final()
       ]);
     } catch (error) {
-      console.error('Decryption failed:', error);
+      logger.error('Decryption failed', { error: error instanceof Error ? error.message : 'Unknown' });
       throw new Error('Decryption failed - data may be corrupted or tampered');
     }
   }
@@ -117,7 +120,7 @@ export class EncryptionService {
             try {
               doc[field] = await EncryptionService.decryptField(doc[field]);
             } catch (error) {
-              console.error(`Decryption failed for field ${field}:`, error);
+              logger.error(`Decryption failed for field`, { field, error: error instanceof Error ? error.message : 'Unknown' });
             }
           }
         }

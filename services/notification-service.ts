@@ -34,13 +34,27 @@ export class NotificationService {
       pass: process.env.SMTP_PASS
     }
   });
+  private static cleanupInterval: NodeJS.Timeout | null = null;
+
+  /**
+   * Cleanup method for memory management
+   * Stops all intervals and clears resources
+   */
+  static destroy(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+    this.wsClients.clear();
+    this.redis.disconnect();
+  }
 
   static async initialize() {
     // Verify email configuration
     await this.emailTransporter.verify();
 
-    // Start cleanup job
-    setInterval(() => this.cleanupOldNotifications(), 24 * 60 * 60 * 1000); // Daily
+    // Start cleanup job - track interval for cleanup
+    this.cleanupInterval = setInterval(() => this.cleanupOldNotifications(), 24 * 60 * 60 * 1000); // Daily
   }
 
   static async sendNotification(options: NotificationOptions): Promise<boolean> {
