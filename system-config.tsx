@@ -136,3 +136,23 @@ const SystemConfig = () => {
             <CardTitle className="flex items-center gap-2">
               <Lock className="w-5 h-5" />
               Sécurité
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium">Verrouillage auto</h3>
+                  <p className="text-sm text-gray-500">Après 5 minutes d'inactivité</p>
+                </div>
+                <Switch checked={config.security.autoLock} />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+export default SystemConfig;
