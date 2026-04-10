@@ -166,10 +166,110 @@ export class EncryptionService {
     );
   }
 
-  // Helper method for secure key rotation
-  static async rotateEncryptionKey(oldSecret: string, newSecret: string): Promise<void> {
-    // Implement key rotation logic here
-    // This should re-encrypt all sensitive data with the new key
-    throw new Error('Key rotation not implemented');
+  /**
+   * Rotates encryption key by re-encrypting data with a new secret
+   * @param encryptedData - Array of encrypted data to rotate (format: {e, i, a, s})
+   * @param oldSecret - Current encryption secret
+   * @param newSecret - New encryption secret (min 32 chars)
+   * @returns Array of re-encrypted data with new key
+   */
+  static async rotateEncryptionKey(
+    encryptedData: string[],
+    oldSecret: string,
+    newSecret: string
+  ): Promise<string[]> {
+    // Validate secrets
+    if (!oldSecret || oldSecret.length < 32) {
+      throw new Error('Old secret must be at least 32 characters');
+    }
+    if (!newSecret || newSecret.length < 32) {
+      throw new Error('New secret must be at least 32 characters');
+    }
+    if (oldSecret === newSecret) {
+      throw new Error('New secret must be different from old secret');
+    }
+
+    const results: string[] = [];
+
+    try {
+      logger.info('Starting key rotation', { dataCount: encryptedData.length });
+
+      for (const data of encryptedData) {
+        try {
+          // Step 1: Decrypt with old key
+          const { e, i, a, s } = JSON.parse(data);
+          const decrypted = await this.decryptWithSecret(
+            Buffer.from(e, 'base64'),
+            Buffer.from(i, 'base64'),
+            Buffer.from(a, 'base64'),
+            Buffer.from(s, 'base64'),
+            oldSecret
+          );
+
+          // Step 2: Encrypt with new key
+          const { encrypted, iv, authTag, salt } = await this.encryptWithSecret(decrypted, newSecret);
+
+          // Step 3: Store new encrypted format
+          results.push(JSON.stringify({
+            e: encrypted.toString('base64'),
+            i: iv.toString('base64'),
+            a: authTag.toString('base64'),
+            s: salt.toString('base64')
+          }));
+        } catch (error) {
+          logger.error('Failed to rotate key for data item', { error: error instanceof Error ? error.message : 'Unknown' });
+          throw new Error('Key rotation failed - some data could not be decrypted with old key');
+        }
+      }
+
+      logger.info('Key rotation completed successfully', { rotatedCount: results.length });
+      return results;
+    } catch (error) {
+      logger.error('Key rotation failed', { error: error instanceof Error ? error.message : 'Unknown' });
+      throw error;
+    }
+  }
+
+  /**
+   * Encrypts data using a specific secret (not env var)
+   * @internal Used by rotateEncryptionKey
+   */
+  private static async encryptWithSecret(data: string | Buffer, secret: string): Promise<{
+    encrypted: Buffer;
+    iv: Buffer;
+    authTag: Buffer;
+    salt: Buffer;
+  }> {
+    const salt = randomBytes(this.SALT_LENGTH);
+    const iv = randomBytes(this.IV_LENGTH);
+    
+    const scryptAsync = promisify(scrypt);
+    const key = await scryptAsync(secret, salt, this.KEY_LENGTH) as Buffer;
+    
+    const cipher = createCipheriv(this.ALGORITHM, key, iv);
+    const encrypted = Buffer.concat([cipher.update(data), cipher.final()]);
+    const authTag = cipher.getAuthTag();
+
+    return { encrypted, iv, authTag, salt };
+  }
+
+  /**
+   * Decrypts data using a specific secret (not env var)
+   * @internal Used by rotateEncryptionKey
+   */
+  private static async decryptWithSecret(
+    encrypted: Buffer,
+    iv: Buffer,
+    authTag: Buffer,
+    salt: Buffer,
+    secret: string
+  ): Promise<Buffer> {
+    const scryptAsync = promisify(scrypt);
+    const key = await scryptAsync(secret, salt, this.KEY_LENGTH) as Buffer;
+    
+    const decipher = createDecipheriv(this.ALGORITHM, key, iv);
+    decipher.setAuthTag(authTag);
+    
+    return Buffer.concat([decipher.update(encrypted), decipher.final()]);
   }
 }

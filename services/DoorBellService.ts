@@ -1,17 +1,25 @@
 import { EventEmitter } from 'events';
+import { logger } from './utils/logger';
 import { Face } from '../models/FaceModel';
 import { NotificationService } from './NotificationService';
 import { LoggingService } from './LoggingService';
 import { ExpressionAnalysisService } from './ExpressionAnalysisService';
 import { SceneAutomationService } from './SceneAutomationService';
 
+/**
+ * Service de gestion de la sonnette
+ * @singleton Gère les événements de sonnette et l'automatisation associée
+ * @emits doorbell-ring
+ */
 export class DoorBellService {
     private static instance: DoorBellService;
+    private static isDestroyed = false;
     private eventEmitter: EventEmitter;
     private notificationService: NotificationService;
     private loggingService: LoggingService;
     private expressionService: ExpressionAnalysisService;
     private sceneService: SceneAutomationService;
+    private boundListeners: Map<string, (...args: any[]) => void>;
 
     private constructor() {
         this.eventEmitter = new EventEmitter();
@@ -19,16 +27,53 @@ export class DoorBellService {
         this.loggingService = LoggingService.getInstance();
         this.expressionService = ExpressionAnalysisService.getInstance();
         this.sceneService = SceneAutomationService.getInstance();
+        this.boundListeners = new Map();
 
         // Écouter les événements de sonnette
-        this.eventEmitter.on('doorbell-ring', this.handleDoorbellRing.bind(this));
+        this.initializeListeners();
+        DoorBellService.isDestroyed = false;
     }
 
     public static getInstance(): DoorBellService {
-        if (!DoorBellService.instance) {
+        if (!DoorBellService.instance || DoorBellService.isDestroyed) {
             DoorBellService.instance = new DoorBellService();
         }
         return DoorBellService.instance;
+    }
+
+    /**
+     * Destroys the service instance and cleans up all resources
+     * Removes event listeners and clears the singleton
+     */
+    public static destroy(): void {
+        if (DoorBellService.isDestroyed) {
+            logger.warn('DoorBellService already destroyed');
+            return;
+        }
+
+        const instance = DoorBellService.instance;
+        if (instance) {
+            // Remove all bound listeners
+            instance.boundListeners.forEach((listener, event) => {
+                instance.eventEmitter.removeListener(event, listener);
+                logger.debug(`Removed listener for event: ${event}`);
+            });
+            instance.boundListeners.clear();
+
+            // Remove all listeners from eventEmitter
+            instance.eventEmitter.removeAllListeners();
+
+            logger.info('DoorBellService destroyed successfully');
+        }
+
+        DoorBellService.isDestroyed = true;
+        DoorBellService.instance = null as any;
+    }
+
+    private initializeListeners(): void {
+        const doorbellHandler = this.handleDoorbellRing.bind(this);
+        this.eventEmitter.on('doorbell-ring', doorbellHandler);
+        this.boundListeners.set('doorbell-ring', doorbellHandler);
     }
 
     // Gérer un nouvel événement de sonnette

@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { logger } from '../utils/logger';
 import SceneActionService from './SceneActionService';
 import FaceRecognitionService, { FaceProfile } from '../recognition/FaceRecognitionService';
 import { NotificationService } from '../notifications/NotificationService';
@@ -11,13 +12,20 @@ interface ProfileSceneMapping {
   };
 }
 
+/**
+ * Service d'intégration visage-scènes
+ * @singleton Gère les mappings entre profils faciaux et scènes domotiques
+ * @emits profileScenesUpdated, profileScenesActivated, profileScenesDeactivated
+ */
 export class FaceSceneIntegrationService {
   private static instance: FaceSceneIntegrationService;
+  private static isDestroyed = false;
   private mappings: Map<string, ProfileSceneMapping>;
   private eventEmitter: EventEmitter;
   private sceneService: typeof SceneActionService;
   private faceService: FaceRecognitionService;
   private notificationService: NotificationService;
+  private boundListeners: Map<string, (...args: any[]) => void>;
 
   private constructor() {
     this.mappings = new Map();
@@ -25,21 +33,62 @@ export class FaceSceneIntegrationService {
     this.sceneService = SceneActionService;
     this.faceService = FaceRecognitionService.getInstance();
     this.notificationService = NotificationService.getInstance();
+    this.boundListeners = new Map();
 
     this.initializeEventListeners();
+    FaceSceneIntegrationService.isDestroyed = false;
   }
 
   public static getInstance(): FaceSceneIntegrationService {
-    if (!FaceSceneIntegrationService.instance) {
+    if (!FaceSceneIntegrationService.instance || FaceSceneIntegrationService.isDestroyed) {
       FaceSceneIntegrationService.instance = new FaceSceneIntegrationService();
     }
     return FaceSceneIntegrationService.instance;
   }
 
+  /**
+   * Destroys the service instance and cleans up all resources
+   * Removes event listeners, clears mappings, and resets the singleton
+   */
+  public static destroy(): void {
+    if (FaceSceneIntegrationService.isDestroyed) {
+      logger.warn('FaceSceneIntegrationService already destroyed');
+      return;
+    }
+
+    const instance = FaceSceneIntegrationService.instance;
+    if (instance) {
+      // Remove all bound listeners from faceService
+      instance.boundListeners.forEach((listener, event) => {
+        instance.faceService.removeListener(event, listener);
+        logger.debug(`Removed listener for event: ${event}`);
+      });
+      instance.boundListeners.clear();
+
+      // Remove all listeners from internal eventEmitter
+      instance.eventEmitter.removeAllListeners();
+
+      // Clear mappings
+      instance.mappings.clear();
+
+      logger.info('FaceSceneIntegrationService destroyed successfully');
+    }
+
+    FaceSceneIntegrationService.isDestroyed = true;
+    FaceSceneIntegrationService.instance = null as any;
+  }
+
   private initializeEventListeners() {
     // Écouter les événements de présence/absence des profils
-    this.faceService.on('profilePresenceDetected', this.handleProfilePresence.bind(this));
-    this.faceService.on('profileAbsenceDetected', this.handleProfileAbsence.bind(this));
+    const presenceHandler = this.handleProfilePresence.bind(this);
+    const absenceHandler = this.handleProfileAbsence.bind(this);
+
+    this.faceService.on('profilePresenceDetected', presenceHandler);
+    this.faceService.on('profileAbsenceDetected', absenceHandler);
+
+    // Store bound listeners for cleanup
+    this.boundListeners.set('profilePresenceDetected', presenceHandler);
+    this.boundListeners.set('profileAbsenceDetected', absenceHandler);
   }
 
   public async setProfileScenes(
@@ -100,7 +149,7 @@ export class FaceSceneIntegrationService {
         scenes: mapping.scenes.onPresence
       });
     } catch (error) {
-      console.error('Error activating presence scenes:', error);
+      logger.error('Error activating presence scenes', { error: error instanceof Error ? error.message : 'Unknown', profile: profile.name });
       this.notificationService.send({
         title: 'Erreur d\'activation',
         message: `Impossible d'activer les scènes pour ${profile.name}`,
@@ -137,7 +186,7 @@ export class FaceSceneIntegrationService {
         scenes: mapping.scenes.onAbsence
       });
     } catch (error) {
-      console.error('Error handling absence scenes:', error);
+      logger.error('Error handling absence scenes', { error: error instanceof Error ? error.message : 'Unknown', profile: profile.name });
       this.notificationService.send({
         title: 'Erreur de mise à jour',
         message: `Impossible de mettre à jour les scènes pour ${profile.name}`,

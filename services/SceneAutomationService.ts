@@ -1,6 +1,7 @@
 import { eventService } from './EventService';
 import { loggingService } from './LoggingService';
 import { notificationService } from './NotificationService';
+import { logger } from './utils/logger';
 import { ExpressionAnalysis, MoodPrediction } from './ExpressionAnalysisService';
 import { Scene, SceneAction } from '../interfaces/scene.interface';
 import { SceneActionService } from './SceneActionService';
@@ -28,27 +29,63 @@ interface AutomationAction {
   parameters: Record<string, any>;
 }
 
+/**
+ * Service d'automatisation des scènes
+ * @singleton Gère les règles d'automatisation basées sur événements
+ */
 class SceneAutomationService {
   private static instance: SceneAutomationService;
+  private static isDestroyed = false;
   private rules: AutomationRule[];
   private sceneActionService: SceneActionService;
+  private subscriptionId: string | null = null;
 
   private constructor() {
     this.rules = [];
     this.sceneActionService = SceneActionService.getInstance();
     this.setupEventListeners();
+    SceneAutomationService.isDestroyed = false;
   }
 
   public static getInstance(): SceneAutomationService {
-    if (!SceneAutomationService.instance) {
+    if (!SceneAutomationService.instance || SceneAutomationService.isDestroyed) {
       SceneAutomationService.instance = new SceneAutomationService();
     }
     return SceneAutomationService.instance;
   }
 
+  /**
+   * Destroys the service instance and cleans up all resources
+   * Unsubscribes from events and clears rules
+   */
+  public static destroy(): void {
+    if (SceneAutomationService.isDestroyed) {
+      logger.warn('SceneAutomationService already destroyed');
+      return;
+    }
+
+    const instance = SceneAutomationService.instance;
+    if (instance && instance.subscriptionId) {
+      // Unsubscribe from eventService
+      eventService.unsubscribe(instance.subscriptionId);
+      logger.debug(`Unsubscribed from eventService: ${instance.subscriptionId}`);
+    }
+
+    // Clear rules
+    if (instance) {
+      instance.rules = [];
+    }
+
+    SceneAutomationService.isDestroyed = true;
+    SceneAutomationService.instance = null as any;
+
+    logger.info('SceneAutomationService destroyed successfully');
+  }
+
   private setupEventListeners(): void {
+    this.subscriptionId = 'scene-automation';
     eventService.subscribe({
-      id: 'scene-automation',
+      id: this.subscriptionId,
       eventTypes: ['expression-analyzed', 'face-detected', 'presence-changed'],
       callback: this.handleEvent.bind(this)
     });

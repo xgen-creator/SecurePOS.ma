@@ -1,9 +1,12 @@
 import { EventEmitter } from 'events';
 import * as tf from '@tensorflow/tfjs';
-import * as faceapi from 'face-api.js';
 import { v4 as uuidv4 } from 'uuid';
 import { Storage } from '../storage/Storage';
 import { EncryptionService } from '../encryption';
+import { loadFaceApi, FaceApi } from '../utils/faceApiLoader';
+
+// Type-only import for faceapi types
+type FaceAPI = FaceApi;
 
 export interface FaceProfile {
   id: string;
@@ -37,8 +40,8 @@ export interface DetectedFace {
   id?: string;
   name?: string;
   confidence: number;
-  box: faceapi.Box;
-  landmarks: faceapi.FaceLandmarks68;
+  box: any; // faceapi.Box - will be typed after dynamic import
+  landmarks: any; // faceapi.FaceLandmarks68
   descriptor: Float32Array;
   age?: number;
   gender?: string;
