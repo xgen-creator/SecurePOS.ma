@@ -75,15 +75,94 @@ const app = Vue.createApp({
 
         async processTag(tagData) {
             try {
-                const response = await fetch(`/api/tags/scan/${tagData}`);
-                if (!response.ok) throw new Error('Tag invalide');
+                // Geolocation anti-fraud check
+                const position = await this.getCurrentPositionWithTimeout(5000);
+                
+                let url = `/api/tags/scan/${tagData}`;
+                
+                // Add geolocation coordinates if available
+                if (position) {
+                    const { latitude, longitude } = position.coords;
+                    url += `?lat=${latitude}&lng=${longitude}`;
+                }
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    
+                    // Handle geofencing violation
+                    if (response.status === 403 && errorData.error === 'Geofencing violation') {
+                        alert(`⚠️ ${errorData.message}\n\nDistance détectée: ${errorData.distance}m (max: ${errorData.maxDistance}m)\n\nVous devez être physiquement devant la porte pour utiliser ce tag.`);
+                        return;
+                    }
+                    
+                    // Handle geolocation required
+                    if (response.status === 403 && errorData.error === 'Geolocation required') {
+                        alert(`📍 ${errorData.message}\n\nVeuillez autoriser la géolocalisation dans les paramètres de votre navigateur.`);
+                        return;
+                    }
+                    
+                    throw new Error('Tag invalide');
+                }
                 
                 this.ownerInfo = await response.json();
                 this.currentStep = 'contact';
             } catch (error) {
                 console.error('Erreur tag:', error);
-                alert('Tag invalide ou expiré');
+                
+                if (error.message === 'Geolocation timeout') {
+                    alert('⏱️ Délai de géolocalisation dépassé.\nVeuillez vérifier que votre GPS est activé et réessayez.');
+                } else if (error.message === 'Geolocation denied') {
+                    alert('📍 Géolocalisation refusée.\nCe tag nécessite votre position pour vérifier que vous êtes sur place.\nVeuillez autoriser l\'accès à votre position dans les paramètres de votre navigateur.');
+                } else {
+                    alert('Tag invalide ou expiré');
+                }
             }
+        },
+
+        /**
+         * Get current position with timeout
+         * @param timeoutMs Timeout in milliseconds
+         * @returns Promise<GeolocationPosition | null>
+         */
+        getCurrentPositionWithTimeout(timeoutMs) {
+            return new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    console.warn('Geolocation not supported');
+                    resolve(null); // Continue without geolocation (will be handled by server)
+                    return;
+                }
+
+                const timeoutId = setTimeout(() => {
+                    reject(new Error('Geolocation timeout'));
+                }, timeoutMs);
+
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        clearTimeout(timeoutId);
+                        resolve(position);
+                    },
+                    (error) => {
+                        clearTimeout(timeoutId);
+                        console.error('Geolocation error:', error);
+                        
+                        if (error.code === error.PERMISSION_DENIED) {
+                            reject(new Error('Geolocation denied'));
+                        } else if (error.code === error.TIMEOUT) {
+                            reject(new Error('Geolocation timeout'));
+                        } else {
+                            // POSITION_UNAVAILABLE - try to continue without location
+                            resolve(null);
+                        }
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: timeoutMs,
+                        maximumAge: 30000 // Accept positions up to 30 seconds old
+                    }
+                );
+            });
         },
 
         async initiateCommunication(type) {

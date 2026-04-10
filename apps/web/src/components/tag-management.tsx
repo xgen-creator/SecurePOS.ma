@@ -16,6 +16,9 @@ interface Tag {
     message?: boolean
     whatsapp?: boolean
   }
+  latitude?: number
+  longitude?: number
+  geofencing_enabled?: boolean
 }
 
 interface TagManagementProps {
@@ -194,6 +197,12 @@ function TagFeaturesModal({
 }) {
   const [features, setFeatures] = useState(tag.features || {})
   const [showWhatsAppWarning, setShowWhatsAppWarning] = useState(false)
+  
+  // Geolocation state
+  const [latitude, setLatitude] = useState(tag.latitude?.toString() || '')
+  const [longitude, setLongitude] = useState(tag.longitude?.toString() || '')
+  const [geofencingEnabled, setGeofencingEnabled] = useState(tag.geofencing_enabled !== false)
+  const [isGettingLocation, setIsGettingLocation] = useState(false)
 
   const handleWhatsAppToggle = (enabled: boolean) => {
     if (enabled && !whatsAppStatus?.verified) {
@@ -202,6 +211,80 @@ function TagFeaturesModal({
     }
     setFeatures(prev => ({ ...prev, whatsapp: enabled }))
     setShowWhatsAppWarning(false)
+  }
+
+  // Get current position using browser geolocation
+  const handleGetCurrentPosition = () => {
+    if (!navigator.geolocation) {
+      alert('La géolocalisation n\'est pas supportée par votre navigateur.')
+      return
+    }
+
+    setIsGettingLocation(true)
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude: lat, longitude: lng } = position.coords
+        setLatitude(lat.toFixed(8))
+        setLongitude(lng.toFixed(8))
+        setIsGettingLocation(false)
+      },
+      (error) => {
+        setIsGettingLocation(false)
+        console.error('Geolocation error:', error)
+        
+        if (error.code === error.PERMISSION_DENIED) {
+          alert('Permission de géolocalisation refusée. Veuillez autoriser l\'accès à votre position dans les paramètres de votre navigateur.')
+        } else {
+          alert('Impossible d\'obtenir votre position. Veuillez vérifier que votre GPS est activé.')
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 60000
+      }
+    )
+  }
+
+  // Enhanced save function that includes geolocation
+  const handleSave = () => {
+    const updatedFeatures = { ...features }
+    
+    // Update tag with geolocation data
+    const updatedTag = {
+      ...tag,
+      features: updatedFeatures,
+      latitude: latitude ? parseFloat(latitude) : null,
+      longitude: longitude ? parseFloat(longitude) : null,
+      geofencing_enabled: geofencingEnabled
+    }
+    
+    // Call the parent's onSave with all data
+    onSave(tag.id, updatedFeatures)
+    
+    // Also update geolocation separately via Supabase
+    updateTagGeolocation()
+  }
+
+  const updateTagGeolocation = async () => {
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
+
+    const { error } = await supabase
+      .from('tags')
+      .update({
+        latitude: latitude ? parseFloat(latitude) : null,
+        longitude: longitude ? parseFloat(longitude) : null,
+        geofencing_enabled: geofencingEnabled
+      })
+      .eq('id', tag.id)
+
+    if (error) {
+      console.error('Error updating geolocation:', error)
+    }
   }
 
   return (
@@ -311,7 +394,92 @@ function TagFeaturesModal({
           </label>
         </div>
 
-        <div className="flex space-x-3">
+        {/* Geolocation Section */}
+        <div className="border-t border-gray-200 pt-4 mt-4">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
+            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Géolocalisation (Anti-fraude)
+          </h3>
+
+          {/* Use current position button */}
+          <button
+            onClick={handleGetCurrentPosition}
+            disabled={isGettingLocation}
+            className="w-full mb-3 px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 disabled:opacity-50 flex items-center justify-center"
+          >
+            {isGettingLocation ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-indigo-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Localisation en cours...
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Utiliser ma position actuelle
+              </>
+            )}
+          </button>
+
+          {/* Latitude / Longitude inputs */}
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">Latitude</label>
+              <input
+                type="text"
+                value={latitude}
+                onChange={(e) => setLatitude(e.target.value)}
+                placeholder="34.052234"
+                className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">Longitude</label>
+              <input
+                type="text"
+                value={longitude}
+                onChange={(e) => setLongitude(e.target.value)}
+                placeholder="-6.783456"
+                className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+              />
+            </div>
+          </div>
+
+          {/* Geofencing toggle */}
+          <label className="flex items-center justify-between p-3 bg-gray-50 rounded-lg cursor-pointer">
+            <div className="flex items-center">
+              <span className="text-2xl mr-3">🛡️</span>
+              <div>
+                <span className="font-medium text-sm">Protection géographique</span>
+                <p className="text-xs text-gray-500">
+                  Bloque les scans à plus de 100m du tag
+                </p>
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={geofencingEnabled}
+              onChange={(e) => setGeofencingEnabled(e.target.checked)}
+              className="w-5 h-5 text-indigo-600 rounded"
+            />
+          </label>
+
+          {!latitude && !longitude && (
+            <p className="text-xs text-yellow-600 mt-2">
+              ⚠️ Aucune position configurée. La protection anti-fraude nécessite des coordonnées GPS.
+            </p>
+          )}
+        </div>
+
+        <div className="flex space-x-3 mt-4">
           <button
             onClick={onClose}
             className="flex-1 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
@@ -319,7 +487,7 @@ function TagFeaturesModal({
             Annuler
           </button>
           <button
-            onClick={() => onSave(tag.id, features)}
+            onClick={handleSave}
             className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             Enregistrer

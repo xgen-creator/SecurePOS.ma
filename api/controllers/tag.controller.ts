@@ -66,13 +66,15 @@ export class TagController {
   /**
    * GET /api/tags/scan/:tagId
    * Public endpoint - Called by visitor after scanning QR/NFC
+   * Includes geofencing anti-fraud (100m tolerance)
    */
   async getTagInfo(req: Request, res: Response): Promise<void> {
     try {
       const { tagId } = req.params;
+      const { lat, lng } = req.query;
       const supabase = getSupabaseClient();
       
-      // Find tag by code
+      // Find tag by code with geolocation data
       const { data: tag, error: tagError } = await supabase
         .from('tags')
         .select(`
@@ -90,6 +92,61 @@ export class TagController {
       if (tagError || !tag) {
         res.status(404).json({ error: 'Tag not found or inactive' });
         return;
+      }
+      
+      // Geofencing check (if enabled and coordinates provided)
+      if (tag.geofencing_enabled !== false && tag.latitude && tag.longitude) {
+        if (!lat || !lng) {
+          res.status(403).json({ 
+            error: 'Geolocation required',
+            message: 'Veuillez activer la géolocalisation pour utiliser ce tag.'
+          });
+          return;
+        }
+
+        const visitorLat = parseFloat(lat as string);
+        const visitorLng = parseFloat(lng as string);
+
+        if (isNaN(visitorLat) || isNaN(visitorLng)) {
+          res.status(400).json({ 
+            error: 'Invalid coordinates',
+            message: 'Coordonnées GPS invalides.'
+          });
+          return;
+        }
+
+        const distance = this.calculateDistance(
+          visitorLat, visitorLng,
+          tag.latitude, tag.longitude
+        );
+
+        // Log the attempt regardless of success
+        await this.logAccessAttempt(supabase, tag, distance, visitorLat, visitorLng, req);
+
+        if (distance > 100) {
+          logger.warn('Geofencing violation detected', {
+            tagId: tag.id,
+            tagCode: tag.tag_code,
+            distance: Math.round(distance),
+            visitorLat,
+            visitorLng,
+            tagLat: tag.latitude,
+            tagLng: tag.longitude
+          });
+
+          res.status(403).json({ 
+            error: 'Geofencing violation',
+            message: 'Vous devez être à proximité immédiate du tag pour l\'utiliser.',
+            distance: Math.round(distance),
+            maxDistance: 100
+          });
+          return;
+        }
+
+        logger.debug('Geofencing check passed', {
+          tagId: tag.id,
+          distance: Math.round(distance)
+        });
       }
       
       // Get owner info (limited data for privacy)
@@ -580,6 +637,71 @@ export class TagController {
     }
   }
   
+  /**
+   * Calculate distance between two GPS coordinates using Haversine formula
+   * @returns Distance in meters
+   */
+  private calculateDistance(
+    lat1: number, lng1: number,
+    lat2: number, lng2: number
+  ): number {
+    const R = 6371e3; // Earth radius in meters
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lng2 - lng1) * Math.PI / 180;
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return R * c; // Distance in meters
+  }
+
+  /**
+   * Log access attempt to access_logs
+   */
+  private async logAccessAttempt(
+    supabase: any,
+    tag: any,
+    distance: number,
+    visitorLat: number,
+    visitorLng: number,
+    req: Request
+  ): Promise<void> {
+    try {
+      await supabase.from('access_logs').insert({
+        action: 'VISITOR',
+        status: distance > 100 ? 'DENIED' : 'PENDING',
+        method: 'QR_CODE', // or NFC depending on scan method
+        property_id: tag.property_id,
+        device_id: tag.device_id || null,
+        ip_address: req.ip || req.headers['x-forwarded-for'] || null,
+        user_agent: req.headers['user-agent'] || null,
+        geo_location: {
+          lat: visitorLat,
+          lng: visitorLng,
+          tag_lat: tag.latitude,
+          tag_lng: tag.longitude,
+          distance: Math.round(distance)
+        },
+        metadata: {
+          tag_code: tag.tag_code,
+          geofencing_enabled: tag.geofencing_enabled,
+          distance_calculated: Math.round(distance),
+          exceeded_limit: distance > 100
+        }
+      });
+    } catch (error) {
+      // Log error but don't fail the request
+      logger.error('Failed to log access attempt', {
+        error: error instanceof Error ? error.message : 'Unknown',
+        tagId: tag.id
+      });
+    }
+  }
+
   // Helper: Check if tag is available based on schedule
   private checkAvailability(availability: any): boolean {
     if (!availability || availability.always === true) {
