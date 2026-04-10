@@ -19,6 +19,8 @@ interface Tag {
   latitude?: number
   longitude?: number
   geofencing_enabled?: boolean
+  tier?: 'DIY' | 'PREMIUM'
+  pdf_generated_at?: string
 }
 
 interface TagManagementProps {
@@ -100,6 +102,132 @@ export function TagManagement({ user }: TagManagementProps) {
     setEditingTag(null)
   }
 
+  /**
+   * Génère un PDF A4 avec le QR Code pour impression (Tier DIY)
+   * Utilise jsPDF pour créer un document bilingue FR/AR
+   */
+  async function generateQRCodePDF(tag: Tag) {
+    try {
+      // Dynamically import jsPDF
+      const { jsPDF } = await import('jspdf')
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      })
+
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const pageHeight = doc.internal.pageSize.getHeight()
+      const margin = 20
+
+      // Logo / Header
+      doc.setFontSize(24)
+      doc.setTextColor(79, 70, 229) // Indigo-600
+      doc.text('🔔 Scanbell', pageWidth / 2, margin + 10, { align: 'center' })
+
+      doc.setFontSize(12)
+      doc.setTextColor(107, 114, 128) // Gray-500
+      doc.text('Votre sonnette connectée', pageWidth / 2, margin + 18, { align: 'center' })
+
+      // Tag name
+      doc.setFontSize(16)
+      doc.setTextColor(31, 41, 55) // Gray-800
+      doc.text(tag.name || 'Mon Tag', pageWidth / 2, margin + 35, { align: 'center' })
+
+      // QR Code placeholder (center of page)
+      // In production, you'd generate the actual QR code using a library like qrcode
+      // For now, we'll create a placeholder box with the tag code
+      const qrSize = 80
+      const qrX = (pageWidth - qrSize) / 2
+      const qrY = margin + 50
+
+      // QR Box background
+      doc.setFillColor(243, 244, 246) // Gray-100
+      doc.roundedRect(qrX, qrY, qrSize, qrSize, 5, 5, 'F')
+
+      // QR Border
+      doc.setDrawColor(79, 70, 229) // Indigo-600
+      doc.setLineWidth(2)
+      doc.roundedRect(qrX, qrY, qrSize, qrSize, 5, 5, 'S')
+
+      // QR Placeholder text
+      doc.setFontSize(10)
+      doc.setTextColor(107, 114, 128)
+      doc.text('[QR CODE]', pageWidth / 2, qrY + qrSize / 2 - 5, { align: 'center' })
+      
+      // URL
+      doc.setFontSize(8)
+      doc.setTextColor(79, 70, 229)
+      doc.text(`scanbell.ma/t/${tag.tag_code}`, pageWidth / 2, qrY + qrSize / 2 + 10, { align: 'center' })
+
+      // Tag Code
+      doc.setFontSize(14)
+      doc.setTextColor(31, 41, 55)
+      doc.text(`Code: ${tag.tag_code}`, pageWidth / 2, qrY + qrSize + 15, { align: 'center' })
+
+      // Instructions FR
+      doc.setFontSize(14)
+      doc.setTextColor(31, 41, 55)
+      doc.text('Comment utiliser:', margin, qrY + qrSize + 35)
+
+      doc.setFontSize(11)
+      doc.setTextColor(75, 85, 99)
+      const instructionsFR = [
+        '1. Ouvrez l\'appareil photo de votre téléphone',
+        '2. Pointez vers le QR code ci-dessus',
+        '3. Cliquez sur le lien qui apparaît',
+        '4. Envoyez votre message au propriétaire'
+      ]
+      let y = qrY + qrSize + 42
+      instructionsFR.forEach(line => {
+        doc.text(line, margin, y)
+        y += 6
+      })
+
+      // Separator
+      doc.setDrawColor(229, 231, 235)
+      doc.setLineWidth(0.5)
+      doc.line(margin, y + 5, pageWidth - margin, y + 5)
+
+      // Instructions AR (Arabic) - Note: jsPDF supports RTL with proper fonts
+      y += 15
+      doc.setFontSize(14)
+      doc.setTextColor(31, 41, 55)
+      doc.text('كيفية الاستخدام:', margin, y)
+
+      // Since jsPDF default font doesn't support Arabic well, we'll use a note
+      doc.setFontSize(10)
+      doc.setTextColor(107, 114, 128)
+      doc.text('(Pour le texte arabe, utilisez une police compatible avec jsPDF)', margin, y + 8)
+
+      // Footer
+      const footerY = pageHeight - margin
+      doc.setFontSize(9)
+      doc.setTextColor(156, 163, 175)
+      doc.text('Scanbell.ma - Votre sonnette du futur', pageWidth / 2, footerY, { align: 'center' })
+      doc.text('Version Gratuite (DIY) - Imprimez et partagez ce QR code', pageWidth / 2, footerY + 5, { align: 'center' })
+
+      // Save the PDF
+      doc.save(`scanbell-qr-${tag.tag_code}.pdf`)
+
+      // Update tag to track PDF generation
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
+      await supabase
+        .from('tags')
+        .update({ pdf_generated_at: new Date().toISOString() })
+        .eq('id', tag.id)
+
+      alert('✅ PDF généré avec succès ! Vous pouvez maintenant l\'imprimer.')
+
+    } catch (error) {
+      console.error('Error generating PDF:', error)
+      alert('❌ Erreur lors de la génération du PDF. Veuillez réessayer.')
+    }
+  }
+
   if (loading) {
     return <div>Chargement...</div>
   }
@@ -118,7 +246,19 @@ export function TagManagement({ user }: TagManagementProps) {
           <div key={tag.id} className="p-4 border rounded-lg">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <h3 className="font-medium">{tag.name}</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-medium">{tag.name}</h3>
+                  {/* Tier Badge */}
+                  {tag.tier === 'DIY' ? (
+                    <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded-full">
+                      📄 DIY
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">
+                      ⭐ PREMIUM
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-gray-500">Code: {tag.tag_code}</p>
                 <p className="text-sm text-gray-500">Scans: {tag.scan_count}</p>
               </div>
@@ -138,25 +278,86 @@ export function TagManagement({ user }: TagManagementProps) {
             </div>
             
             {/* Features indicators */}
-            <div className="flex flex-wrap gap-2">
-              {tag.features?.video && (
-                <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">Vidéo</span>
-              )}
-              {tag.features?.audio && (
-                <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">Audio</span>
-              )}
-              {tag.features?.message && (
-                <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded">Message</span>
-              )}
-              {tag.features?.whatsapp && (
-                <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded flex items-center">
-                  <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347"/>
-                  </svg>
-                  WhatsApp
-                </span>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {tag.tier === 'DIY' ? (
+                // DIY tier: Only messaging
+                <>
+                  <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded">💬 Message (Async)</span>
+                  <span className="px-2 py-1 bg-gray-100 text-gray-500 text-xs rounded line-through">📹 Vidéo</span>
+                  <span className="px-2 py-1 bg-gray-100 text-gray-500 text-xs rounded line-through">🎤 Audio</span>
+                  <span className="px-2 py-1 bg-gray-100 text-gray-500 text-xs rounded line-through">
+                    <svg className="w-3 h-3 inline mr-1" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347"/>
+                    </svg>
+                    WhatsApp
+                  </span>
+                </>
+              ) : (
+                // PREMIUM tier: All features
+                <>
+                  {tag.features?.video && (
+                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">📹 Vidéo</span>
+                  )}
+                  {tag.features?.audio && (
+                    <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">🎤 Audio</span>
+                  )}
+                  {tag.features?.message && (
+                    <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded">💬 Message</span>
+                  )}
+                  {tag.features?.whatsapp && (
+                    <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded flex items-center">
+                      <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347"/>
+                      </svg>
+                      WhatsApp
+                    </span>
+                  )}
+                </>
               )}
             </div>
+
+            {/* DIY Actions */}
+            {tag.tier === 'DIY' && (
+              <div className="flex flex-wrap gap-2 pt-2 border-t">
+                <button
+                  onClick={() => generateQRCodePDF(tag)}
+                  className="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700 flex items-center"
+                >
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                  </svg>
+                  📄 Télécharger QR (PDF)
+                </button>
+                <a
+                  href="https://scanbell.ma/shop"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 bg-amber-500 text-white text-sm rounded hover:bg-amber-600 flex items-center"
+                >
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
+                  </svg>
+                  ⭐ Passer en Premium
+                </a>
+              </div>
+            )}
+
+            {/* Upsell message for DIY */}
+            {tag.tier === 'DIY' && (
+              <div className="mt-3 p-2 bg-blue-50 rounded text-sm text-blue-700">
+                <p className="flex items-start">
+                  <svg className="w-4 h-4 mr-1 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  <span>
+                    <strong>Version Gratuite:</strong> Messagerie texte/audio uniquement. 
+                    <a href="https://scanbell.ma/shop" target="_blank" className="underline font-semibold">
+                      Commander un Tag Premium
+                    </a> pour les appels directs.
+                  </span>
+                </p>
+              </div>
+            )}
           </div>
         ))}
 
@@ -312,61 +513,119 @@ function TagFeaturesModal({
           </div>
         )}
 
+        {/* Tier DIY Banner */}
+        {tag.tier === 'DIY' && (
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
+            <div className="flex items-center">
+              <svg className="w-5 h-5 text-orange-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              <div className="flex-1">
+                <p className="text-sm text-orange-800">
+                  <strong>Version Gratuite (DIY)</strong><br/>
+                  Seule la messagerie asynchrone est disponible. Les appels directs nécessitent un 
+                  <a href="https://scanbell.ma/shop" target="_blank" className="underline font-semibold">
+                    Tag Physique Premium
+                  </a>.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="space-y-4 mb-6">
-          {/* Video */}
-          <label className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+          {/* Video - LOCKED for DIY */}
+          <label className={`flex items-center justify-between p-3 border rounded-lg ${
+            tag.tier === 'DIY' 
+              ? 'bg-gray-50 opacity-60 cursor-not-allowed' 
+              : 'cursor-pointer hover:bg-gray-50'
+          }`}>
             <div className="flex items-center">
               <span className="text-2xl mr-3">📹</span>
               <div>
-                <span className="font-medium">Appel Vidéo</span>
-                <p className="text-xs text-gray-500">Visiteur peut vous appeler en vidéo</p>
+                <span className="font-medium flex items-center">
+                  Appel Vidéo
+                  {tag.tier === 'DIY' && (
+                    <svg className="w-4 h-4 ml-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                    </svg>
+                  )}
+                </span>
+                <p className="text-xs text-gray-500">
+                  {tag.tier === 'DIY' 
+                    ? 'Disponible sur les Tags Physiques Premium →' 
+                    : 'Visiteur peut vous appeler en vidéo'}
+                </p>
               </div>
             </div>
             <input
               type="checkbox"
               checked={features.video || false}
               onChange={(e) => setFeatures(prev => ({ ...prev, video: e.target.checked }))}
-              className="w-5 h-5 text-blue-600 rounded"
+              disabled={tag.tier === 'DIY'}
+              className="w-5 h-5 text-blue-600 rounded disabled:opacity-50"
             />
           </label>
 
-          {/* Audio */}
-          <label className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
+          {/* Audio - LOCKED for DIY */}
+          <label className={`flex items-center justify-between p-3 border rounded-lg ${
+            tag.tier === 'DIY' 
+              ? 'bg-gray-50 opacity-60 cursor-not-allowed' 
+              : 'cursor-pointer hover:bg-gray-50'
+          }`}>
             <div className="flex items-center">
               <span className="text-2xl mr-3">🎤</span>
               <div>
-                <span className="font-medium">Appel Audio</span>
-                <p className="text-xs text-gray-500">Visiteur peut vous appeler</p>
+                <span className="font-medium flex items-center">
+                  Appel Audio
+                  {tag.tier === 'DIY' && (
+                    <svg className="w-4 h-4 ml-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                    </svg>
+                  )}
+                </span>
+                <p className="text-xs text-gray-500">
+                  {tag.tier === 'DIY' 
+                    ? 'Disponible sur les Tags Physiques Premium →' 
+                    : 'Visiteur peut vous appeler'}
+                </p>
               </div>
             </div>
             <input
               type="checkbox"
               checked={features.audio || false}
               onChange={(e) => setFeatures(prev => ({ ...prev, audio: e.target.checked }))}
-              className="w-5 h-5 text-blue-600 rounded"
+              disabled={tag.tier === 'DIY'}
+              className="w-5 h-5 text-blue-600 rounded disabled:opacity-50"
             />
           </label>
 
-          {/* Message */}
+          {/* Message - Available for all tiers */}
           <label className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
             <div className="flex items-center">
               <span className="text-2xl mr-3">💬</span>
               <div>
                 <span className="font-medium">Message</span>
-                <p className="text-xs text-gray-500">Visiteur peut envoyer un message texte</p>
+                <p className="text-xs text-gray-500">
+                  {tag.tier === 'DIY' 
+                    ? 'Messagerie asynchrone texte + audio (30s)' 
+                    : 'Visiteur peut envoyer un message texte'}
+                </p>
               </div>
             </div>
             <input
               type="checkbox"
-              checked={features.message || false}
-              onChange={(e) => setFeatures(prev => ({ ...prev, message: e.target.checked }))}
-              className="w-5 h-5 text-blue-600 rounded"
+              checked={true} // Always enabled for DIY
+              disabled={tag.tier === 'DIY'} // Locked ON for DIY
+              className="w-5 h-5 text-blue-600 rounded disabled:opacity-100"
             />
           </label>
 
-          {/* WhatsApp */}
-          <label className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer ${
-            whatsAppStatus?.verified ? 'hover:bg-gray-50' : 'opacity-50 cursor-not-allowed'
+          {/* WhatsApp - LOCKED for DIY */}
+          <label className={`flex items-center justify-between p-3 border rounded-lg ${
+            tag.tier === 'DIY' || !whatsAppStatus?.verified 
+              ? 'opacity-50 cursor-not-allowed' 
+              : 'cursor-pointer hover:bg-gray-50'
           }`}>
             <div className="flex items-center">
               <span className="text-2xl mr-3">
@@ -375,11 +634,20 @@ function TagFeaturesModal({
                 </svg>
               </span>
               <div>
-                <span className="font-medium">WhatsApp Anonyme</span>
+                <span className="font-medium flex items-center">
+                  WhatsApp Anonyme
+                  {tag.tier === 'DIY' && (
+                    <svg className="w-4 h-4 ml-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                    </svg>
+                  )}
+                </span>
                 <p className="text-xs text-gray-500">
-                  {whatsAppStatus?.verified 
-                    ? 'Visiteur peut vous contacter via WhatsApp (numéro masqué)'
-                    : 'Validation WhatsApp requise dans les paramètres'
+                  {tag.tier === 'DIY' 
+                    ? 'Disponible sur les Tags Physiques Premium →'
+                    : whatsAppStatus?.verified 
+                      ? 'Visiteur peut vous contacter via WhatsApp (numéro masqué)'
+                      : 'Validation WhatsApp requise dans les paramètres'
                   }
                 </p>
               </div>
@@ -388,8 +656,8 @@ function TagFeaturesModal({
               type="checkbox"
               checked={features.whatsapp || false}
               onChange={(e) => handleWhatsAppToggle(e.target.checked)}
-              disabled={!whatsAppStatus?.verified}
-              className="w-5 h-5 text-green-600 rounded"
+              disabled={tag.tier === 'DIY' || !whatsAppStatus?.verified}
+              className="w-5 h-5 text-green-600 rounded disabled:opacity-50"
             />
           </label>
         </div>

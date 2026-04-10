@@ -95,7 +95,11 @@ export class TagController {
       }
       
       // Geofencing check (if enabled and coordinates provided)
-      if (tag.geofencing_enabled !== false && tag.latitude && tag.longitude) {
+      // SKIP for DIY tier: Les tags DIY (QR Code papier) n'ont pas besoin de géofencing
+      // car ils sont conçus pour être partagés numériquement ou imprimés
+      const isDIYTier = tag.tier === 'DIY';
+      
+      if (!isDIYTier && tag.geofencing_enabled !== false && tag.latitude && tag.longitude) {
         if (!lat || !lng) {
           res.status(403).json({ 
             error: 'Geolocation required',
@@ -177,10 +181,33 @@ export class TagController {
         })
         .eq('id', tag.id);
       
+      // Gating logic for DIY tier (Maroc Lite)
+      // DIY: Seulement messagerie texte/audio async (pas de WebRTC, pas de WhatsApp)
+      // PREMIUM: Toutes les fonctionnalités
+      let gatedFeatures = tag.features || {};
+      
+      if (isDIYTier) {
+        // Forcer désactivation des features premium
+        gatedFeatures = {
+          ...gatedFeatures,
+          video: false,      // WebRTC désactivé
+          audio: false,      // WebRTC désactivé  
+          whatsapp: false,   // WhatsApp désactivé
+          message: true      // Message async activé (seule option)
+        };
+        
+        logger.debug('DIY tier detected - gating features', {
+          tagId: tag.id,
+          originalFeatures: tag.features,
+          gatedFeatures
+        });
+      }
+      
       // Return info to visitor
       res.json({
         tagId: tag.id,
         tagCode: tag.tag_code,
+        tier: tag.tier || 'DIY',  // DIY ou PREMIUM
         owner: {
           id: owner.id,
           name: owner.name,
@@ -190,8 +217,11 @@ export class TagController {
           id: tag.property.id,
           name: tag.property.name
         },
-        features: tag.features,
-        availability: tag.availability
+        features: gatedFeatures,
+        availability: tag.availability,
+        // Info DIY spécifique
+        isDIY: isDIYTier,
+        messagingEnabled: true  // Toujours true pour permettre messages async
       });
       
     } catch (error) {

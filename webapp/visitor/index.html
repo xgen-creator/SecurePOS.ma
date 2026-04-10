@@ -90,7 +90,133 @@
                 </div>
             </div>
 
-            <!-- Étape 3: Communication -->
+            <!-- Étape 3: Messagerie DIY (Tier DIY "Maroc Lite") -->
+            <div v-if="currentStep === 'diy-message'" class="space-y-6">
+                <div class="bg-white rounded-lg shadow-sm p-6">
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4 flex items-center">
+                        <span class="bg-indigo-100 text-indigo-700 px-2 py-1 rounded text-sm mr-2">GRATUIT</span>
+                        Envoyer un message
+                    </h2>
+                    <p class="text-gray-600 mb-4 text-sm">
+                        Le propriétaire recevra votre message et pourra y répondre ultérieurement.
+                    </p>
+
+                    <!-- Zone de texte -->
+                    <div class="mb-4">
+                        <textarea 
+                            v-model="diyMessage.text" 
+                            rows="4"
+                            class="w-full border border-gray-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            placeholder="Écrivez votre message ici... (optionnel si vous envoyez un audio)"
+                        ></textarea>
+                    </div>
+
+                    <!-- Section Audio -->
+                    <div class="mb-4">
+                        <div v-if="!diyMessage.audioBlob" class="flex items-center space-x-3">
+                            <button 
+                                v-if="!diyMessage.isRecording"
+                                @click="startDIYAudioRecording"
+                                class="flex items-center px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
+                            >
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/>
+                                </svg>
+                                🎤 Enregistrer une note vocale (30s max)
+                            </button>
+                            
+                            <button 
+                                v-else
+                                @click="stopDIYAudioRecording"
+                                class="flex items-center px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 animate-pulse"
+                            >
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/>
+                                </svg>
+                                ⏹️ Arrêter l'enregistrement
+                            </button>
+                        </div>
+
+                        <div v-else class="flex items-center space-x-3 bg-green-50 p-3 rounded-lg">
+                            <span class="text-green-700 font-medium">✅ Audio enregistré</span>
+                            <button 
+                                @click="playDIYAudioPreview"
+                                class="px-3 py-1 bg-green-500 text-white rounded text-sm hover:bg-green-600"
+                            >
+                                ▶️ Écouter
+                            </button>
+                            <button 
+                                @click="cancelDIYAudio"
+                                class="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600"
+                            >
+                                🗑️ Supprimer
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Boutons d'action -->
+                    <div class="flex space-x-3">
+                        <button 
+                            @click="currentStep = 'contact'"
+                            class="flex-1 px-4 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                        >
+                            Annuler
+                        </button>
+                        <button 
+                            @click="sendDIYMessage"
+                            :disabled="!diyMessage.text && !diyMessage.audioBlob"
+                            :class="[
+                                'flex-1 px-4 py-3 rounded-lg transition font-medium',
+                                diyMessage.text || diyMessage.audioBlob
+                                    ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                            ]"
+                        >
+                            <span v-if="diyMessage.text || diyMessage.audioBlob">
+                                📤 Envoyer le message
+                            </span>
+                            <span v-else>
+                                Écrivez un message ou enregistrez un audio
+                            </span>
+                        </button>
+                    </div>
+
+                    <!-- Info DIY -->
+                    <div class="mt-4 p-3 bg-blue-50 rounded-lg text-sm text-blue-700">
+                        <p class="flex items-center">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            Ce tag utilise la version gratuite. Les appels directs nécessitent un 
+                            <a href="https://scanbell.ma/shop" target="_blank" class="underline font-semibold">Tag Physique Premium</a>.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Étape 4: Success -->
+            <div v-if="currentStep === 'success'" class="space-y-6">
+                <div class="bg-white rounded-lg shadow-sm p-8 text-center">
+                    <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                    </div>
+                    <h2 class="text-2xl font-bold text-gray-800 mb-2">Message envoyé !</h2>
+                    <p class="text-gray-600 mb-6">
+                        Le propriétaire a été notifié et recevra votre message.<br>
+                        Vous pouvez fermer cette page.
+                    </p>
+                    <button 
+                        @click="currentStep = 'contact'"
+                        class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+                    >
+                        Envoyer un autre message
+                    </button>
+                </div>
+            </div>
+
+            <!-- Étape 5: Communication (PREMIUM only) -->
             <div v-if="currentStep === 'communication'" class="space-y-6">
                 <div class="bg-white rounded-lg shadow-sm p-4">
                     <div v-if="communicationType === 'video'" class="aspect-video">
