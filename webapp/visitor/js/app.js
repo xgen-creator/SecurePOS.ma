@@ -88,6 +88,13 @@ const app = Vue.createApp({
 
         async initiateCommunication(type) {
             this.communicationType = type;
+            
+            // WhatsApp Anonyme - Redirection directe via proxy
+            if (type === 'whatsapp') {
+                this.openWhatsAppProxy();
+                return;
+            }
+            
             try {
                 // Demande de session
                 const response = await fetch('/api/communication/request/' + this.ownerInfo.tagId, {
@@ -110,6 +117,49 @@ const app = Vue.createApp({
             } catch (error) {
                 console.error('Erreur communication:', error);
                 alert('Erreur de communication');
+            }
+        },
+
+        /**
+         * Ouvre WhatsApp avec le numéro proxy (anonyme)
+         * Le visiteur ne voit jamais le numéro réel du propriétaire
+         */
+        openWhatsAppProxy() {
+            // Récupérer le numéro proxy depuis les variables d'environnement
+            // En production, cela devrait être configuré côté serveur
+            const proxyNumber = window.WHATSAPP_PROXY_NUMBER || '212600000000'; // Format international sans +
+            const tagCode = this.ownerInfo.tagCode;
+            const ownerName = this.ownerInfo.owner.name;
+            
+            const message = encodeURIComponent(
+                `Bonjour, je souhaite contacter le propriétaire du tag ${tagCode} (${ownerName}). Je suis un visiteur.`
+            );
+            
+            const whatsappUrl = `https://wa.me/${proxyNumber}?text=${message}`;
+            
+            // Journaliser la tentative de contact
+            this.logWhatsAppAttempt(tagCode);
+            
+            // Ouvrir WhatsApp
+            window.open(whatsappUrl, '_blank');
+        },
+
+        /**
+         * Journalise la tentative de contact WhatsApp
+         */
+        async logWhatsAppAttempt(tagCode) {
+            try {
+                await fetch('/api/access-log/whatsapp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        tagCode: tagCode,
+                        method: 'WHATSAPP',
+                        timestamp: new Date().toISOString()
+                    })
+                });
+            } catch (error) {
+                console.error('Erreur journalisation WhatsApp:', error);
             }
         },
 
